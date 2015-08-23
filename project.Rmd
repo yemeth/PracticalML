@@ -1,0 +1,80 @@
+---
+title: "Practical Machine Learning Course Project"
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+---
+
+## Synopsis 
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+## Data preparation
+```{r setup, include=FALSE}
+# This chunk enables caching for the document, since the construction of the model is time consuming
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+We will assume that the datasets are already present in the workind directory. The following code reads both the training and test datasets, and performs some data cleaning, removing the predictors that only provide NA values, as well as the columns that represent timestamps and the user name.
+
+```{r loadData, echo=TRUE}
+library(caret)
+
+training <- read.csv(file="pml-training.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
+evaluationData <- read.csv(file="pml-testing.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
+
+training$classe <- as.factor(training$classe)
+
+validFeatures  <- colnames(training[colSums(is.na(training)) == 0])[-(1:7)]
+procTraining  <- training[validFeatures]
+
+length(names(training))
+length(names(procTraining))
+```
+
+## Model building
+
+We divide the training data into two different sets. One will serve to build the model, while the second will help us to evaluate the model. Since part of the project requires us to predict the class of some subjects, while not requiring an explanation of the underlying model we choose to use random forests as the basis for the model. Random forests focus on accuracy, while sacrificing interpretability.
+As suggested in the course slides ( https://d396qusza40orc.cloudfront.net/predmachlearn/005predictionStudyDesign.pdf ) the training set consists of 60% of the cases, while the test set contains the remaining 40% cases.
+
+```{r model, echo=TRUE}
+set.seed(123456789)
+inTrain = createDataPartition(procTraining$classe, p = 0.6, list=FALSE)
+trainData = procTraining[inTrain,]
+testData = procTraining[-inTrain,]
+
+rfModel <- train(classe ~., method="rf", data=trainData, trControl=trainControl(method='cv'), number=5, allowParallel=TRUE )
+
+predTrain <- predict(rfModel, newdata=trainData)
+confusionMatrix(predTrain,trainData$classe)
+
+predTest <- predict(rfModel, newdata=testData)
+confusionMatrix(predTest,testData$classe)
+```
+
+The confusion matrices show that the model is indeed accurate, with a 100% of accuracy in the training set, and a 99% of accuracy in the test set.
+
+## Evaluation
+
+The following snippet shows how to obtain the results for the 20 separate problems present in the programming part of the project. The model built in the previous section was used.
+```{r eval, echo=TRUE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+answers <- predict(rfModel, evaluationData)
+pml_write_files(answers)
+answers
+```
+
